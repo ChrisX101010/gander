@@ -1,0 +1,41 @@
+{
+  "events_per_run": 1000000,
+  "window_records": 65536,
+  "warmups": 2,
+  "measured_runs_per_implementation": 10,
+  "cpu": 2,
+  "taskset": true,
+  "input_sha256": "ba8f01b812cc710fda573876a15dede39edbff51cfcf0f276e50bbc3efc3240f",
+  "goose_binary_sha256": "771498341d966d64d6ba519903c73662f055bde2f0871f5c3a57b2676a381e48",
+  "rust_binary_sha256": "b2dde41c5d612e957f87d708ae6e5d99278baca9ce361ce5dd8c1b1ea2ac2e55",
+  "goose": {
+    "runs": 10,
+    "seconds_median": 1.68,
+    "seconds_mean": 1.716,
+    "seconds_min": 1.67,
+    "seconds_max": 1.78,
+    "seconds_p95": 1.78,
+    "events_per_second_median": 595238.0952380953,
+    "events_per_second_mean": 583248.6481182424,
+    "rss_kb_median": 50832.0,
+    "rss_kb_max": 50956,
+    "rss_mib_median": 49.640625,
+    "rss_mib_max": 49.76171875
+  },
+  "rust": {
+    "runs": 10,
+    "seconds_median": 1.54,
+    "seconds_mean": 1.534,
+    "seconds_min": 1.5,
+    "seconds_max": 1.55,
+    "seconds_p95": 1.55,
+    "events_per_second_median": 649350.6493506493,
+    "events_per_second_mean": 651936.5517467984,
+    "rss_kb_median": 42960.0,
+    "rss_kb_max": 43036,
+    "rss_mib_median": 41.953125,
+    "rss_mib_max": 42.02734375
+  },
+  "goose_speedup_vs_rust_median": 0.9166666666666667,
+  "goose_rss_ratio_vs_rust_median": 1.1832402234636872
+}
