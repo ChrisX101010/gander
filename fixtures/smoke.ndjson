@@ -1,0 +1,7 @@
+{"trace_id":"t1","event_id":"e1","ts":100,"seq":1,"key":"status","value":"started","source":"agent"}
+{"trace_id":"t1","event_id":"e1","ts":100,"seq":1,"key":"status","value":"started","source":"agent"}
+{"trace_id":"t1","event_id":"e2","ts":105,"seq":2,"key":"status","value":"running","source":"tool"}
+{"trace_id":"t1","event_id":"e3","ts":102,"seq":3,"key":"status","value":"stale","source":"agent"}
+{"trace_id":"t1","event_id":"e4","ts":106,"seq":4,"key":"answer","value":"42","source":"model"}
+{"trace_id":"t2","event_id":"e5","ts":200,"seq":1,"key":"status","value":"done","source":"agent"}
+{"trace_id":"broken","event_id":"bad"}
