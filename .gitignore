@@ -3,3 +3,13 @@
 /fixtures/bench-*.ndjson
 /bench/*.time
 /bench/*.out
+
+# Local benchmark environment / generated evidence
+/bench/environment.txt
+
+# Python
+__pycache__/
+*.pyc
+/bench/final-1m.time
+/bench/final-10m.time
+/bench/release-gate-summary.json

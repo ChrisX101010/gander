@@ -1,0 +1,13 @@
+{
+  "one_million_rss_kb": 50804,
+  "one_million_rss_mib": 49.61328125,
+  "ten_million_rss_kb": 53168,
+  "ten_million_rss_mib": 51.921875,
+  "input_growth": 10.0,
+  "rss_growth": 1.0465317691520353,
+  "ten_million_windows": 153,
+  "ten_million_records": 10000000,
+  "ten_million_accepted": 10000000,
+  "ten_million_rejected": 0,
+  "ten_million_oversized": 0
+}

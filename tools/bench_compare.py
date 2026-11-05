@@ -202,6 +202,7 @@ CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
 with open(CSV_PATH, "w", newline="") as f:
     writer = csv.DictWriter(
         f,
+        lineterminator="\n",
         fieldnames=[
             "iteration",
             "implementation",

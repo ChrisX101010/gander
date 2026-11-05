@@ -104,8 +104,7 @@ impl Engine {
             }
 
             Some(current) => {
-                let newer =
-                    (event.ts, event.seq) > (current.ts, current.seq);
+                let newer = (event.ts, event.seq) > (current.ts, current.seq);
 
                 if newer {
                     self.states.insert(state_key, event);
@@ -147,14 +146,9 @@ impl Engine {
         // Deliberately materialize and sort the complete snapshot.
         // Goose benchmark mode performs the same reduction + sorting work
         // even though payload output is suppressed.
-        let mut final_events: Vec<Event> =
-            self.states.values().cloned().collect();
+        let mut final_events: Vec<Event> = self.states.values().cloned().collect();
 
-        final_events.sort_by(|a, b| {
-            a.trace_id
-                .cmp(&b.trace_id)
-                .then_with(|| a.key.cmp(&b.key))
-        });
+        final_events.sort_by(|a, b| a.trace_id.cmp(&b.trace_id).then_with(|| a.key.cmp(&b.key)));
 
         writeln!(
             out,
@@ -243,24 +237,20 @@ fn main() -> io::Result<()> {
                     line.clear();
 
                     engine.finish_record(&mut output)?;
-
                 } else if !line.is_empty() {
                     engine.process_line(&line);
                     line.clear();
 
                     engine.finish_record(&mut output)?;
                 }
-
             } else if dropping {
                 // Discard remainder of oversized record.
-
             } else if line.len() < MAX_EVENT_BYTES {
                 line.push(byte);
 
                 if line.len() > engine.window.peak_line_bytes {
                     engine.window.peak_line_bytes = line.len();
                 }
-
             } else {
                 dropping = true;
                 line.clear();
@@ -272,7 +262,6 @@ fn main() -> io::Result<()> {
     if dropping {
         engine.reject_oversized();
         engine.finish_record(&mut output)?;
-
     } else if !line.is_empty() {
         engine.process_line(&line);
         engine.finish_record(&mut output)?;

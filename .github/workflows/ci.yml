@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  correctness:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Gander
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git python3
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+          rustc --version
+          cargo --version
+
+      - name: Build pinned Goose compiler
+        run: |
+          git clone https://github.com/aardappel/goose.git /tmp/goose
+          git -C /tmp/goose checkout 335fddc1
+          cmake -S /tmp/goose -B /tmp/goose/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/goose/build --config Release -j2
+          /tmp/goose/build/goose --version
+
+      - name: Verify Gander
+        run: |
+          make verify GOOSE=/tmp/goose/build/goose
