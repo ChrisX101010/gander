@@ -1,0 +1,9 @@
+events=1000000
+unique=900000
+duplicates=100000
+inserted=20000
+stale=125714
+superseded=754286
+final=20000
+traces=5000
+keys_per_trace=4
