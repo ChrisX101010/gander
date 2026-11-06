@@ -93,7 +93,7 @@ jobs:
           print(out)
 
       - name: Upload packaged artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: package-${{ matrix.platform }}
           path: dist/*
