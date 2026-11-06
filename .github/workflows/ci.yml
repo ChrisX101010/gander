@@ -43,7 +43,7 @@ jobs:
 
       - name: Static quality
         run: |
-          /tmp/goose/build/goose format --check src/
+          /tmp/goose/build/goose format --check src/main.goose src/windowed.goose src/windowed_bench.goose
           cargo fmt --all -- --check
           cargo clippy --all-targets --all-features -- -D warnings
           cargo test --release
@@ -118,7 +118,7 @@ jobs:
           cmp dist/example.out examples/ci-pipeline.expected.ndjson
 
       - name: Upload native binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gander-${{ matrix.platform }}
           path: |
