@@ -1,0 +1,11 @@
+* text=auto
+*.goose text eol=lf
+*.rs text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.csv text eol=lf
+*.ndjson text eol=lf
+Makefile text eol=lf
