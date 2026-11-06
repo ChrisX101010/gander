@@ -72,11 +72,11 @@ Results:
 
 | Metric | Goose | Rust |
 |---|---:|---:|
-| Median runtime | 1.690 s | 1.565 s |
+| Median runtime | 1.805 s | 1.615 s |
 | Mean runtime | 1.718 s | 1.580 s |
-| p95 runtime | 1.800 s | 1.670 s |
+| p95 runtime | 1.890 s | 1.740 s |
 | Median throughput | 591,716 ev/s | 638,984 ev/s |
-| Median peak RSS | 49.62 MiB | 41.94 MiB |
+| Median peak RSS | 49.70 MiB | 41.99 MiB |
 
 For this workload Rust is faster and uses less peak RSS.
 
@@ -98,3 +98,27 @@ Raw fair benchmark evidence is stored in:
 bench/fair-1m.csv
 bench/fair-1m-summary.json
 ```
+
+## Stable-candidate re-run
+
+The final local stable gate re-ran the fair one-million-event benchmark after
+the production CLI/parser hardening.
+
+| Metric | Goose | Rust |
+|---|---:|---:|
+| Median runtime | 1.805 s | 1.615 s |
+| Median throughput | 554,021 events/s | 619,201 events/s |
+| p95 runtime | 1.890 s | 1.740 s |
+| Median peak RSS | 49.70 MiB | 41.99 MiB |
+
+On this re-run Rust had approximately 11.8% higher median
+throughput and used approximately 15.5% less median peak RSS.
+
+The p95 values are intentionally reported as measured; this run included
+host-noise outliers and Gander does not discard unfavorable samples.
+
+The long-stream re-run measured 49.63 MiB peak RSS at 1M events and
+52.12 MiB at 10M events, a 1.050x RSS ratio for 10x input.
+
+See `bench/fair-1m-summary.json`, `bench/stable-long-stream-summary.json`, and
+`bench/environment-public.txt`.

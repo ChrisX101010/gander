@@ -20,10 +20,14 @@ struct Event {
 
 impl Event {
     fn valid(&self) -> bool {
-        self.trace_id.len() <= 64
+        !self.trace_id.is_empty()
+            && self.trace_id.len() <= 64
+            && !self.event_id.is_empty()
             && self.event_id.len() <= 64
+            && !self.key.is_empty()
             && self.key.len() <= 64
             && self.value.len() <= 256
+            && !self.source.is_empty()
             && self.source.len() <= 64
     }
 }

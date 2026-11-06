@@ -3,19 +3,28 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GOOSE_COMMIT: 335fddc13dc74666398ffe160ec8a8f2958329d0
 
 jobs:
   correctness:
-    runs-on: ubuntu-latest
+    name: correctness-linux
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout Gander
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake git python3
+          cmake --version
 
       - name: Install Rust toolchain
         run: |
@@ -27,11 +36,92 @@ jobs:
       - name: Build pinned Goose compiler
         run: |
           git clone https://github.com/aardappel/goose.git /tmp/goose
-          git -C /tmp/goose checkout 335fddc1
+          git -C /tmp/goose checkout "$GOOSE_COMMIT"
           cmake -S /tmp/goose -B /tmp/goose/build -DCMAKE_BUILD_TYPE=Release
-          cmake --build /tmp/goose/build --config Release -j2
+          cmake --build /tmp/goose/build --config Release --parallel 2
           /tmp/goose/build/goose --version
+
+      - name: Static quality
+        run: |
+          /tmp/goose/build/goose format --check src/
+          cargo fmt --all -- --check
+          cargo clippy --all-targets --all-features -- -D warnings
+          cargo test --release
 
       - name: Verify Gander
         run: |
           make verify GOOSE=/tmp/goose/build/goose
+
+      - name: Install smoke
+        run: |
+          make install PREFIX="$HOME/.local" GOOSE=/tmp/goose/build/goose
+          "$HOME/.local/bin/gander" --version
+          "$HOME/.local/bin/gander" --strict < examples/ci-pipeline.ndjson > /tmp/gander-ci.out
+          cmp /tmp/gander-ci.out examples/ci-pipeline.expected.ndjson
+
+      - name: Docker build and stream smoke
+        run: |
+          docker build -t gander:ci .
+          docker run --rm -i gander:ci --strict < examples/ci-pipeline.ndjson > /tmp/gander-docker.out
+          cmp /tmp/gander-docker.out examples/ci-pipeline.expected.ndjson
+
+  portability:
+    name: native-${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux-x86_64
+          - os: macos-15
+            platform: macos-arm64
+          - os: windows-2022
+            platform: windows-x86_64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout Gander
+        uses: actions/checkout@v7
+
+      - name: Show CMake
+        shell: bash
+        run: cmake --version
+
+      - name: Build pinned Goose compiler
+        shell: bash
+        run: |
+          git clone https://github.com/aardappel/goose.git .goose-src
+          git -C .goose-src checkout "$GOOSE_COMMIT"
+          cmake -S .goose-src -B .goose-src/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build .goose-src/build --config Release --parallel 2
+
+      - name: Build standalone Gander
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            GOOSE="$GITHUB_WORKSPACE/.goose-src/build/Release/goose.exe"
+            if [ ! -f "$GOOSE" ]; then
+              GOOSE="$GITHUB_WORKSPACE/.goose-src/build/goose.exe"
+            fi
+            OUT="$GITHUB_WORKSPACE/dist/gander.exe"
+          else
+            GOOSE="$GITHUB_WORKSPACE/.goose-src/build/goose"
+            OUT="$GITHUB_WORKSPACE/dist/gander"
+          fi
+          "$GOOSE" --version
+          "$GOOSE" check src/windowed.goose
+          "$GOOSE" build --standalone -o "$OUT" src/windowed.goose
+          "$OUT" --version
+          "$OUT" --strict < examples/ci-pipeline.ndjson > dist/example.out
+          cmp dist/example.out examples/ci-pipeline.expected.ndjson
+
+      - name: Upload native binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: gander-${{ matrix.platform }}
+          path: |
+            dist/gander
+            dist/gander.exe
+          if-no-files-found: error

@@ -1,0 +1,124 @@
+name: Release artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  GOOSE_COMMIT: 335fddc13dc74666398ffe160ec8a8f2958329d0
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux-x86_64
+            archive: tar
+          - os: macos-15
+            platform: macos-arm64
+            archive: tar
+          - os: windows-2022
+            platform: windows-x86_64
+            archive: zip
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout Gander
+        uses: actions/checkout@v7
+
+      - name: Build pinned Goose
+        shell: bash
+        run: |
+          git clone https://github.com/aardappel/goose.git .goose-src
+          git -C .goose-src checkout "$GOOSE_COMMIT"
+          cmake -S .goose-src -B .goose-src/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build .goose-src/build --config Release --parallel 2
+
+      - name: Build and verify standalone Gander
+        shell: bash
+        run: |
+          mkdir -p package
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            GOOSE="$GITHUB_WORKSPACE/.goose-src/build/Release/goose.exe"
+            if [ ! -f "$GOOSE" ]; then
+              GOOSE="$GITHUB_WORKSPACE/.goose-src/build/goose.exe"
+            fi
+            OUT="$GITHUB_WORKSPACE/package/gander.exe"
+          else
+            GOOSE="$GITHUB_WORKSPACE/.goose-src/build/goose"
+            OUT="$GITHUB_WORKSPACE/package/gander"
+          fi
+          "$GOOSE" build --standalone -o "$OUT" src/windowed.goose
+          "$OUT" --version
+          "$OUT" --strict < examples/ci-pipeline.ndjson > package/example.out
+          cmp package/example.out examples/ci-pipeline.expected.ndjson
+          rm package/example.out
+          cp README.md LICENSE CHANGELOG.md package/
+
+      - name: Package
+        shell: python
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          ARCHIVE: ${{ matrix.archive }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          import os, pathlib, tarfile, zipfile
+          ref = os.environ.get("REF_NAME", "")
+          version = ref if ref and ref not in ("master", "main") else f"run-{os.environ['RUN_ID']}"
+          platform = os.environ["PLATFORM"]
+          archive = os.environ["ARCHIVE"]
+          src = pathlib.Path("package")
+          outdir = pathlib.Path("dist")
+          outdir.mkdir(exist_ok=True)
+          stem = f"gander-{version}-{platform}"
+          if archive == "zip":
+              out = outdir / f"{stem}.zip"
+              with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+                  for item in src.iterdir():
+                      z.write(item, item.name)
+          else:
+              out = outdir / f"{stem}.tar.gz"
+              with tarfile.open(out, "w:gz") as t:
+                  for item in src.iterdir():
+                      t.add(item, arcname=item.name)
+          print(out)
+
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate SHA-256 checksums
+        run: |
+          cd release-assets
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release-assets/*             --repo "$GITHUB_REPOSITORY"             --title "Gander $GITHUB_REF_NAME"             --generate-notes

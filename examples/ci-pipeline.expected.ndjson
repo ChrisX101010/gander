@@ -1,0 +1,4 @@
+{"trace_id":"build-8421","event_id":"evt-007","ts":150,"seq":1,"key":"artifact","value":"published","source":"registry"}
+{"trace_id":"build-8421","event_id":"evt-008","ts":160,"seq":1,"key":"deploy","value":"production","source":"deployer"}
+{"trace_id":"build-8421","event_id":"evt-009","ts":170,"seq":1,"key":"pipeline","value":"succeeded","source":"ci-controller"}
+{"trace_id":"build-8421","event_id":"evt-004","ts":130,"seq":1,"key":"tests","value":"passed","source":"test-runner"}

@@ -8,16 +8,16 @@ let MAX_EVENT_BYTES = 65536;
 struct Event {
     trace_id: u8[..64],
     event_id: u8[..64],
-    ts: i64,
-    seq: i64,
-    key: u8[..64],
-    value: u8[..256],
-    source: u8[..64],
+    ts:       i64,
+    seq:      i64,
+    key:      u8[..64],
+    value:    u8[..256],
+    source:   u8[..64],
 }
 
 struct StateKey {
     trace_id: u8[..64],
-    key: u8[..64],
+    key:      u8[..64],
 }
 
 fn hash(k: StateKey) -> u64 {
@@ -44,11 +44,11 @@ fn empty_event() -> Event {
     return Event {
         trace_id: [],
         event_id: [],
-        ts: 0,
-        seq: 0,
-        key: [],
-        value: [],
-        source: [],
+        ts:       0,
+        seq:      0,
+        key:      [],
+        value:    [],
+        source:   [],
     };
 }
 
@@ -57,6 +57,14 @@ fn parse_event(text: const u8[:]) -> Event, bool {
     var scratch: u8[>..] = [];
     var e = empty_event();
 
+    var seen_trace = false;
+    var seen_event = false;
+    var seen_ts = false;
+    var seen_seq = false;
+    var seen_key = false;
+    var seen_value = false;
+    var seen_source = false;
+
     var have_trace = false;
     var have_event = false;
     var have_ts = false;
@@ -64,53 +72,41 @@ fn parse_event(text: const u8[:]) -> Event, bool {
     var have_key = false;
     var have_value = false;
     var have_source = false;
+    var duplicate_field = false;
 
     json::each_member(r) { field =>
         if field == "trace_id" {
-            let s = json::read_string(r, scratch);
-            have_trace = s.len > 0 && put64(e.trace_id, s);
-
+            if seen_trace { duplicate_field = true; json::skip(r); }
+            else { seen_trace = true; let s = json::read_string(r, scratch); have_trace = s.len > 0 && put64(e.trace_id, s); }
         } else if field == "event_id" {
-            let s = json::read_string(r, scratch);
-            have_event = s.len > 0 && put64(e.event_id, s);
-
+            if seen_event { duplicate_field = true; json::skip(r); }
+            else { seen_event = true; let s = json::read_string(r, scratch); have_event = s.len > 0 && put64(e.event_id, s); }
         } else if field == "ts" {
-            e.ts = json::read_int(r);
-            have_ts = true;
-
+            if seen_ts { duplicate_field = true; json::skip(r); }
+            else { seen_ts = true; e.ts = json::read_int(r); have_ts = true; }
         } else if field == "seq" {
-            e.seq = json::read_int(r);
-            have_seq = true;
-
+            if seen_seq { duplicate_field = true; json::skip(r); }
+            else { seen_seq = true; e.seq = json::read_int(r); have_seq = true; }
         } else if field == "key" {
-            let s = json::read_string(r, scratch);
-            have_key = s.len > 0 && put64(e.key, s);
-
+            if seen_key { duplicate_field = true; json::skip(r); }
+            else { seen_key = true; let s = json::read_string(r, scratch); have_key = s.len > 0 && put64(e.key, s); }
         } else if field == "value" {
-            let s = json::read_string(r, scratch);
-            have_value = put256(e.value, s);
-
+            if seen_value { duplicate_field = true; json::skip(r); }
+            else { seen_value = true; let s = json::read_string(r, scratch); have_value = put256(e.value, s); }
         } else if field == "source" {
-            let s = json::read_string(r, scratch);
-            have_source = s.len > 0 && put64(e.source, s);
-
+            if seen_source { duplicate_field = true; json::skip(r); }
+            else { seen_source = true; let s = json::read_string(r, scratch); have_source = s.len > 0 && put64(e.source, s); }
         } else {
             json::skip(r);
         }
     };
 
-    if !json::finish(r) {
-        return e, false;
-    }
+    if !json::finish(r) { return e, false; }
 
     let valid =
-        have_trace &&
-        have_event &&
-        have_ts &&
-        have_seq &&
-        have_key &&
-        have_value &&
-        have_source;
+        !duplicate_field &&
+        have_trace && have_event && have_ts && have_seq &&
+        have_key && have_value && have_source;
 
     return e, valid;
 }
@@ -149,7 +145,6 @@ fn emit_event(e: Event) {
     print(out);
 }
 
-
 fn main() {
     var seen = dictionary<u8[..64], bool> {};
     var states = dictionary<StateKey, Event> {};
@@ -181,7 +176,7 @@ fn main() {
 
         let sk = StateKey {
             trace_id: e.trace_id,
-            key: e.key,
+            key:      e.key,
         };
 
         var exists = false;
@@ -198,11 +193,9 @@ fn main() {
 
         if !exists {
             states.insert(sk, e);
-
         } else if replace {
             states.insert(sk, e);
             superseded++;
-
         } else {
             stale++;
         }
@@ -225,22 +218,18 @@ fn main() {
                     oversized++;
                     dropping = false;
                     line.clear();
-
                 } else if line.len > 0 {
                     process_line(line);
                     line.clear();
                 }
-
             } else if dropping {
                 // Oversized record: discard until newline.
-
             } else if line.len < MAX_EVENT_BYTES {
                 line.push(c);
 
                 if line.len > peak_line_bytes {
                     peak_line_bytes = line.len;
                 }
-
             } else {
                 // This byte would exceed the 64 KiB record limit.
                 dropping = true;
@@ -253,7 +242,6 @@ fn main() {
     if dropping {
         rejected++;
         oversized++;
-
     } else if line.len > 0 {
         process_line(line);
     }
@@ -279,7 +267,7 @@ fn main() {
         " stale=", stale,
         " superseded=", superseded,
         " final=", final.len,
-        " peak_line_bytes=", peak_line_bytes
+        " peak_line_bytes=", peak_line_bytes,
     );
 
     for e in final {

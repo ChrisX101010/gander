@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import random
 import subprocess
 import sys
@@ -12,42 +13,29 @@ ROOT = Path(__file__).resolve().parent.parent
 GOOSE = ROOT / "build/gander-windowed"
 RUST = ROOT / "target/release/gander_windowed_bench"
 
-SEEDS = 50
+SEEDS = int(os.environ.get("GANDER_FUZZ_SEEDS", "50"))
 MAX_EVENT_BYTES = 65_536
 
 
 def run_goose(data):
-    p = subprocess.run(
-        [str(GOOSE)],
-        input=data,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-
+    p = subprocess.run([str(GOOSE)], input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if p.returncode != 0:
-        raise RuntimeError(
-            f"Goose rc={p.returncode}\n"
-            + p.stderr.decode(errors="replace")
-        )
+        raise RuntimeError(f"Goose rc={p.returncode}\n" + p.stderr.decode(errors="replace"))
+    return p.stdout, p.stderr
 
-    return p.stdout
+
+def split_rust_reference(output):
+    data, diagnostics = [], []
+    for raw in output.splitlines(keepends=True):
+        (data if raw.startswith(b"{") else diagnostics).append(raw)
+    return b"".join(data), b"".join(diagnostics)
 
 
 def run_rust(data):
-    p = subprocess.run(
-        [str(RUST), "--emit"],
-        input=data,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-
+    p = subprocess.run([str(RUST), "--emit"], input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if p.returncode != 0:
-        raise RuntimeError(
-            f"Rust rc={p.returncode}\n"
-            + p.stderr.decode(errors="replace")
-        )
-
-    return p.stdout
+        raise RuntimeError(f"Rust rc={p.returncode}\n" + p.stderr.decode(errors="replace"))
+    return split_rust_reference(p.stdout)
 
 
 def enc(obj):
@@ -221,6 +209,10 @@ def random_stream(seed):
         if r.random() < 0.002:
             event["value"] = "z" * 257
 
+        # Occasionally produce an empty required identifier.
+        if r.random() < 0.002:
+            event[r.choice(["trace_id", "event_id", "key", "source"])] = ""
+
         raw = enc(event)
 
         output.append(raw)
@@ -280,8 +272,8 @@ for seed in range(SEEDS):
     data = random_stream(seed)
 
     try:
-        goose = run_goose(data)
-        rust = run_rust(data)
+        goose_stdout, goose_stderr = run_goose(data)
+        rust_stdout, rust_stderr = run_rust(data)
 
     except Exception as exc:
         print(f"seed={seed:02d} PROCESS=RED")
@@ -289,7 +281,7 @@ for seed in range(SEEDS):
         failures.append((seed, "process failure"))
         continue
 
-    if goose != rust:
+    if goose_stdout != rust_stdout or goose_stderr != rust_stderr:
         print(
             f"seed={seed:02d} "
             f"bytes={len(data)} "
@@ -298,12 +290,12 @@ for seed in range(SEEDS):
 
         print(
             "goose_sha256=",
-            sha(goose),
+            sha(goose_stdout + b"\0" + goose_stderr),
         )
 
         print(
             "rust_sha256=",
-            sha(rust),
+            sha(rust_stdout + b"\0" + rust_stderr),
         )
 
         failure_input = Path(
@@ -314,11 +306,11 @@ for seed in range(SEEDS):
 
         Path(
             f"/tmp/gander-diff-goose-{seed}.out"
-        ).write_bytes(goose)
+        ).write_bytes(goose_stdout + b"\n--- STDERR ---\n" + goose_stderr)
 
         Path(
             f"/tmp/gander-diff-rust-{seed}.out"
-        ).write_bytes(rust)
+        ).write_bytes(rust_stdout + b"\n--- STDERR ---\n" + rust_stderr)
 
         print(
             "failure_input=",
@@ -339,7 +331,7 @@ for seed in range(SEEDS):
         goose_second = run_goose(data)
 
         deterministic = (
-            goose_second == goose
+            goose_second == (goose_stdout, goose_stderr)
         )
 
         if not deterministic:
@@ -350,7 +342,7 @@ for seed in range(SEEDS):
     print(
         f"seed={seed:02d} "
         f"input_bytes={len(data)} "
-        f"output_sha256={sha(goose)[:16]} "
+        f"output_sha256={sha(goose_stdout + b'\0' + goose_stderr)[:16]} "
         f"eq=GREEN "
         f"determinism="
         f"{'GREEN' if deterministic else 'RED'}"

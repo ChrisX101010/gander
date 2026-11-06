@@ -13,3 +13,5 @@ __pycache__/
 /bench/final-1m.time
 /bench/final-10m.time
 /bench/release-gate-summary.json
+/bench/stable-1m.time
+/bench/stable-10m.time

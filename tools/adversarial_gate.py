@@ -45,59 +45,46 @@ def line(e):
 
 def run(binary, data, rust=False):
     cmd = [str(binary)]
-
     if rust:
         cmd.append("--emit")
-
-    p = subprocess.run(
-        cmd,
-        input=data,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-
+    p = subprocess.run(cmd, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if p.returncode != 0:
         print("PROCESS_FAILURE")
         print("cmd=", cmd)
         print("rc=", p.returncode)
         print(p.stderr.decode(errors="replace"))
         sys.exit(1)
+    return p.stdout, p.stderr
 
-    return p.stdout
+
+def split_rust_reference(output):
+    data, diagnostics = [], []
+    for raw in output.splitlines(keepends=True):
+        if raw.startswith(b"{"):
+            data.append(raw)
+        else:
+            diagnostics.append(raw)
+    return b"".join(data), b"".join(diagnostics)
 
 
-def parse(output):
-    text = output.decode()
-
-    windows = []
-    events = []
-    total = None
-
-    for raw in text.splitlines():
-
+def parse(stdout, stderr):
+    windows, events, total = [], [], None
+    for raw in stderr.decode().splitlines():
         if raw.startswith("window="):
             values = {}
-
             for item in raw.split():
                 if "=" in item:
-                    k, v = item.split("=", 1)
-                    values[k] = int(v)
-
+                    k, v = item.split("=", 1); values[k] = int(v)
             windows.append(values)
-
-        elif raw.startswith("{"):
-            events.append(json.loads(raw))
-
         elif raw.startswith("total_windows="):
             values = {}
-
             for item in raw.split():
                 if "=" in item:
-                    k, v = item.split("=", 1)
-                    values[k] = int(v)
-
+                    k, v = item.split("=", 1); values[k] = int(v)
             total = values
-
+    for raw in stdout.decode().splitlines():
+        if raw:
+            events.append(json.loads(raw))
     return windows, events, total
 
 
@@ -109,28 +96,27 @@ failures = []
 
 
 def check(name, data, validator=None):
-
-    goose = run(GOOSE, data)
-    rust = run(RUST, data, rust=True)
-
-    equal = goose == rust
-
+    goose_stdout, goose_stderr = run(GOOSE, data)
+    rust_stdout, _ = run(RUST, data, rust=True)
+    rust_data, rust_diag = split_rust_reference(rust_stdout)
+    equal = goose_stdout == rust_data and goose_stderr == rust_diag
     if not equal:
-        failures.append(f"{name}: Goose/Rust output mismatch")
+        failures.append(f"{name}: Goose/Rust output contract mismatch")
         print(f"{name}_BYTE_EQ=RED")
+        print("goose_stdout_sha=", sha(goose_stdout))
+        print("rust_data_sha=", sha(rust_data))
+        print("goose_stderr_sha=", sha(goose_stderr))
+        print("rust_diag_sha=", sha(rust_diag))
         return
-
     print(f"{name}_BYTE_EQ=GREEN")
-
     if validator is not None:
         try:
-            validator(*parse(goose))
+            validator(*parse(goose_stdout, goose_stderr))
             print(f"{name}_SEMANTICS=GREEN")
         except AssertionError as exc:
             failures.append(f"{name}: {exc}")
             print(f"{name}_SEMANTICS=RED: {exc}")
-
-    return goose
+    return goose_stdout, goose_stderr
 
 
 # ------------------------------------------------------------
@@ -467,8 +453,8 @@ if high_out is not None:
     hashes = []
 
     for i in range(3):
-        result = run(GOOSE, high_cardinality)
-        hashes.append(sha(result))
+        out, err = run(GOOSE, high_cardinality)
+        hashes.append(sha(out + b"\0" + err))
 
     print("DETERMINISM_HASHES=" + ",".join(hashes))
 
@@ -480,6 +466,70 @@ if high_out is not None:
         )
         print("REPEATED_RUN_DETERMINISM=RED")
 
+
+
+# ------------------------------------------------------------
+# 12. Empty required identifiers are rejected
+# ------------------------------------------------------------
+empty_required = line(event(trace="", eid="empty-trace", ts=1, seq=1))
+
+def validate_empty_required(windows, events, total):
+    assert len(windows) == 1
+    assert windows[0]["records"] == 1
+    assert windows[0]["accepted"] == 0
+    assert windows[0]["rejected"] == 1
+    assert events == []
+    assert total["total_rejected"] == 1
+
+check("EMPTY_REQUIRED_IDENTIFIER", empty_required, validate_empty_required)
+
+# ------------------------------------------------------------
+# 13. Duplicate required JSON fields are rejected
+# ------------------------------------------------------------
+duplicate_member = (
+    b'{"trace_id":"t","trace_id":"evil","event_id":"dup-field",'
+    b'"ts":1,"seq":1,"key":"status","value":"v","source":"test"}\n'
+)
+
+def validate_duplicate_member(windows, events, total):
+    assert len(windows) == 1
+    assert windows[0]["records"] == 1
+    assert windows[0]["accepted"] == 0
+    assert windows[0]["rejected"] == 1
+    assert events == []
+    assert total["total_rejected"] == 1
+
+check("DUPLICATE_REQUIRED_FIELD", duplicate_member, validate_duplicate_member)
+
+# ------------------------------------------------------------
+# 14. Unknown fields are ignored for forward compatibility
+# ------------------------------------------------------------
+with_unknown = event(eid="unknown-ok", ts=10, seq=1, value="accepted")
+with_unknown["future_field"] = {"nested": [1, 2, 3]}
+
+def validate_unknown(windows, events, total):
+    assert windows[0]["accepted"] == 1
+    assert windows[0]["rejected"] == 0
+    assert len(events) == 1
+    assert events[0]["event_id"] == "unknown-ok"
+
+check("UNKNOWN_FIELD_FORWARD_COMPAT", line(with_unknown), validate_unknown)
+
+# ------------------------------------------------------------
+# 15. Signed i64 boundaries
+# ------------------------------------------------------------
+i64_bounds = b"".join([
+    line(event(trace="min", eid="i64-min", ts=-9223372036854775808, seq=-9223372036854775808, value="min")),
+    line(event(trace="max", eid="i64-max", ts=9223372036854775807, seq=9223372036854775807, value="max")),
+])
+
+def validate_i64(windows, events, total):
+    assert windows[0]["accepted"] == 2
+    assert windows[0]["rejected"] == 0
+    assert len(events) == 2
+    assert total["total_records"] == 2
+
+check("I64_BOUNDARIES", i64_bounds, validate_i64)
 
 # ------------------------------------------------------------
 # FINAL

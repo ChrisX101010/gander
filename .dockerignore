@@ -1,0 +1,10 @@
+.git
+.github
+build
+target
+bench
+fixtures
+examples
+tools
+*.pyc
+__pycache__

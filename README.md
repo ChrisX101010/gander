@@ -1,14 +1,74 @@
-# Gander
+<p align="center">
+  <a href="https://github.com/aardappel/goose">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/aardappel/goose/master/docs/logo/logo_white_fg_trans_bg_mini.png">
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/aardappel/goose/master/docs/logo/logo_black_fg_white_bg_mini.png">
+      <img alt="Built with the Goose programming language" width="330" src="https://raw.githubusercontent.com/aardappel/goose/master/docs/logo/logo_black_fg_white_bg_mini.png">
+    </picture>
+  </a>
+</p>
 
-**A bounded-memory event and state reduction engine written in Goose.**
+<h1 align="center">Gander</h1>
 
-Gander is an application-level systems experiment designed around the Goose
-memory model. It consumes NDJSON event streams, performs exact window-local
-deduplication, reduces state deterministically, retains provenance, and emits
-deterministic snapshots.
+<p align="center"><strong>Bounded-memory, deterministic event/state reduction — written in Goose.</strong></p>
 
-The repository includes independent Rust implementations and deliberately
-preserves benchmark results even when Goose does not win.
+<p align="center">
+  <a href="https://github.com/ChrisX101010/gander/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ChrisX101010/gander/actions/workflows/ci.yml/badge.svg?branch=master"></a>
+  <a href="https://github.com/ChrisX101010/gander/releases"><img alt="Release" src="https://img.shields.io/github/v/release/ChrisX101010/gander?include_prereleases"></a>
+  <a href="LICENSE"><img alt="Apache-2.0" src="https://img.shields.io/github/license/ChrisX101010/gander"></a>
+  <a href="https://github.com/aardappel/goose"><img alt="Written in Goose" src="https://img.shields.io/badge/written%20in-Goose-111111"></a>
+</p>
+
+<p align="center"><sub>Independent project built with Goose; not an official Goose project.</sub></p>
+
+Gander turns noisy event streams into compact deterministic state snapshots while keeping retained state bounded by a fixed reduction window.
+
+### Why it is useful
+
+- **Unix-pipeline safe:** snapshot NDJSON on stdout; operational counters on stderr.
+- **Bounded by design:** 65,536-byte records and 65,536-record windows.
+- **Deterministic:** `(trace_id, key)` + greatest `(ts, seq)` + stable sorted output.
+- **Differentially verified:** independent Rust references, adversarial tests, randomized workloads.
+- **Honest evidence:** benchmark results stay public even when Rust wins.
+
+### Real use case: collapse CI/CD state
+
+```bash
+make build GOOSE=/path/to/goose
+./build/gander < examples/ci-pipeline.ndjson > latest.ndjson 2> stats.log
+```
+
+The fixture contains duplicate, stale and superseded workflow events; Gander emits only the latest deterministic state for `artifact`, `deploy`, `pipeline`, and `tests`.
+
+For validation-sensitive pipelines:
+
+```bash
+./build/gander --strict < examples/ci-pipeline.ndjson > reduced.ndjson
+```
+
+`--strict` exits with status 3 if any physical input record is rejected.
+
+### Install the command locally
+
+After building:
+
+```bash
+make install PREFIX="$HOME/.local" GOOSE=/path/to/goose
+```
+
+If `$HOME/.local/bin` is on your `PATH`, Gander is then available as:
+
+```bash
+gander --version
+gander --strict < examples/ci-pipeline.ndjson > state.ndjson
+```
+
+You can always run the repository build directly without installing it:
+
+```bash
+./build/gander --version
+```
+
 
 ## Event model
 
@@ -84,10 +144,10 @@ Measured during development:
 
 | Input | Peak RSS |
 |---|---:|
-| 1,000,000 events | 49.61 MiB |
-| 10,000,000 events | 51.92 MiB |
+| 1,000,000 events | 49.63 MiB |
+| 10,000,000 events | 52.12 MiB |
 
-The tested stream grew by **10.000x**, while peak RSS grew by **1.047x**.
+The tested stream grew by **10.000x**, while peak RSS grew by **1.050x**.
 
 The 10M test ran inside one long-lived process and produced 153 bounded
 windows. This demonstrates a memory plateau for the tested workload and
@@ -100,17 +160,18 @@ Fair one-million-event benchmark:
 
 | Metric | Goose | Rust |
 |---|---:|---:|
-| Median runtime | 1.690 s | 1.565 s |
-| Median throughput | 591,716 events/s | 638,984 events/s |
-| p95 runtime | 1.800 s | 1.670 s |
-| Median peak RSS | 49.62 MiB | 41.94 MiB |
+| Median runtime | 1.805 s | 1.615 s |
+| Median throughput | 554,021 events/s | 619,201 events/s |
+| p95 runtime | 1.890 s | 1.740 s |
+| Median peak RSS | 49.70 MiB | 41.99 MiB |
 
-For this workload, Rust was approximately 8.0% higher-throughput and used
-approximately 15.5% less peak RSS.
+For this workload, Rust was approximately 11.8% higher-throughput and used approximately 15.5% less peak RSS.
 
 Gander does **not** claim that Goose universally outperforms Rust.
 
 See [docs/benchmarks.md](docs/benchmarks.md).
+
+Benchmark machine/toolchain details: [bench/environment-public.txt](bench/environment-public.txt).
 
 ## Build
 
@@ -185,6 +246,25 @@ tools/differential_fuzz.py
 tools/bench_compare.py
     Reproducible Goose-versus-Rust benchmark.
 ```
+
+## Distribution
+
+Stable releases are intended to ship ready-to-run native archives for:
+
+- Linux x86-64
+- Windows x86-64
+- macOS Apple Silicon
+
+Each stable GitHub release also publishes `SHA256SUMS`.
+
+Docker users can build the same pinned-Goose implementation with:
+
+```bash
+docker build -t gander .
+docker run --rm -i gander --strict < examples/ci-pipeline.ndjson > state.ndjson
+```
+
+Source builds remain supported through `make build` and `make install`.
 
 ## Scope
 
